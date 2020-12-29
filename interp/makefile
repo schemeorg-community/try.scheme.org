@@ -16,6 +16,7 @@
 #  % npm install google-closure-compiler
 
 GSC=gsc
+CLOSURE_COMPILER=npx google-closure-compiler
 
 .SUFFIXES:
 .SUFFIXES: .scm .sld .js .minjs .html .minhtml
@@ -28,7 +29,7 @@ all: interp-barebones.js interp-barebones.html
 	gzip -k -9 $*.js
 
 .js.minjs:
-	npx google-closure-compiler --js $*.js --js_output_file $*.minjs
+	$(CLOSURE_COMPILER) --js $*.js --js_output_file $*.minjs
 	gzip -k -9 $*.minjs
 
 .js.html:
