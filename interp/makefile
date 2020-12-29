@@ -30,6 +30,7 @@ all: interp-barebones.js interp-barebones.html
 
 .js.minjs:
 	$(CLOSURE_COMPILER) --js $*.js --js_output_file $*.minjs
+	rm -f $*.minjs.gz
 	gzip -k -9 $*.minjs
 
 .js.html:
