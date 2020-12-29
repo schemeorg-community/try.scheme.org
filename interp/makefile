@@ -29,7 +29,7 @@ all: interp-barebones.js interp-barebones.html
 
 .js.minjs:
 	npx google-closure-compiler --js $*.js --js_output_file $*.minjs
-	gzip -k -9 $*.js
+	gzip -k -9 $*.minjs
 
 .js.html:
 	echo "<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body> <script src=\"$*.js\"></script></body></html>" > $*.html
