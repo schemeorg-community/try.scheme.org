@@ -1,0 +1,25 @@
+#console {
+  font-size: 20px;
+}
+
+.console .CodeMirror {
+  font-family: "Hack", Monaco, monospace;
+  border: 3px solid #eee;
+  height: auto;
+}
+
+.console .CodeMirror-line,
+.console .console_input {
+  font-weight: bold;
+}
+
+.console .CodeMirror-matchingbracket {
+  background-color: #ddd;
+}
+
+.console .console_output {
+  font-weight: normal;
+}
+
+.console .console_transcript {
+}

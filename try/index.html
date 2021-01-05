@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <link rel="stylesheet" href="codemirror-5.59.1/lib/codemirror.css">
+    <script src="codemirror-5.59.1/lib/codemirror.js"></script>
+    <script src="codemirror-5.59.1/mode/scheme/scheme.js"></script>
+    <script src="codemirror-5.59.1/addon/edit/matchbrackets.js"></script>
+    <link rel="stylesheet" href="console.css">
+    <script src="Console.js"></script>
+    <script src="Interpreter.min.js"></script>
+  </head>
+  <body onload="new Console(document.querySelector('#console')).connect(g_interp);">
+
+    <pre>
+    Keybindings of the console:
+      Enter          send the current line to the interpreter
+      Up / Ctrl-P    move back in history
+      Down / Ctrl-N  move forward in history
+      Ctrl-L         clear transcript
+      Ctrl-D         end-of-file when line is empty
+      Ctrl-C         interrupt execution
+
+    A few things to try out:
+      &gt; (define (f x) (if (&lt; x 2) x (+ (f (- x 1)) (f (- x 2)))))
+      &gt; (time (f 25))
+      &gt; (time (fib 25)) ;; fib is compiled in Interpreter.scm
+      &gt; (define (go n) (thread-start! (make-thread (lambda () (pp (f n))))))
+      &gt; (for-each go '(25 25 15 25 10))
+      &gt; (import (srfi 28))
+      &gt; (format "1+2=~a" (+ 1 2))
+      &gt; (host-exec "alert(g_scm2host(@1@))" "hello!")
+      &gt; ,help
+    </pre>
+
+    <br>
+
+    <div id="console"></div>
+
+  </body>
+</html>
