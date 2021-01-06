@@ -40,4 +40,4 @@ lib-copy:
 	cp -r `gsc -e '(display (path-expand "~~lib"))'` lib
 
 clean:
-	rm -rf Interpreter.js lib
+	rm -rf Interpreter.js Interpreter.min.js* lib

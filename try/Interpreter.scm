@@ -102,6 +102,14 @@ EOF
  (else
   #f))
 
+;; Redefine the documentation browser to open the manual.
+
+(##gambdoc-set!
+ (lambda (arg1 arg2 arg3 arg4)
+   (##inline-host-statement
+    "window.open(g_scm2host(@1@));"
+    (##string-append "http://gambitscheme.org/try/doc/gambit.html#" arg4))))
+
 ;; Define fib here for testing speed of compiled code.
 
 (define (fib x)
