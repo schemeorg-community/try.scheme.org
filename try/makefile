@@ -16,10 +16,6 @@
 #   make modules
 #   sudo make install
 #
-# You also need CodeMirror.  Get and unzip codemirror-5.59.1 from:
-#
-#   https://codemirror.net/doc/releases.html
-#
 # After that, in this directory do:
 #
 #   make
@@ -28,7 +24,7 @@
 
 CODEMIRROR=codemirror-5.59.1
 
-all: Interpreter.js Interpreter.min.js lib
+all: Interpreter.js Interpreter.min.js lib codemirror
 
 $(CODEMIRROR).zip:
 	wget https://codemirror.net/$(CODEMIRROR).zip
@@ -47,8 +43,10 @@ Interpreter.min.js: Interpreter.js
 	gzip -k -9 Interpreter.min.js
 
 lib:
-	rm -rf lib
+	rm -rf lib doc
 	cp -r `gsc -e '(display (path-expand "~~lib"))'` lib
+	mkdir doc
+	cp `gsc -e '(display (path-expand "~~doc"))'`/gambit.html doc
 
 clean:
 	rm -rf Interpreter.js Interpreter.min.js* lib codemirror $(CODEMIRROR)

@@ -110,6 +110,12 @@ EOF
     "window.open(g_scm2host(@1@));"
     (##string-append "http://gambitscheme.org/try/doc/gambit.html#" arg4))))
 
+;; Redirect current input/output ports to the console to avoid surprises
+;; (by default the current output port is the JS console).
+
+(##current-input-port (##repl-input-port))
+(##current-output-port (##repl-output-port))
+
 ;; Define fib here for testing speed of compiled code.
 
 (define (fib x)
