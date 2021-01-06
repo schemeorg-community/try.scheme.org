@@ -53,7 +53,7 @@ lib:
 clean:
 	rm -rf Interpreter.js lib codemirror $(CODEMIRROR)
 
-manifest: codemirror lib
+manifest: codemirror lib manifest.sh
 	./manifest.sh >manifest
 
 upload: manifest
