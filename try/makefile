@@ -23,11 +23,15 @@
 # Then in a browser open index.html .
 
 CODEMIRROR=codemirror-5.59.1
+BROWSERFS=2.0.0
 
-all: Interpreter.js Interpreter.min.js lib codemirror
+all: Interpreter.js Interpreter.min.js lib codemirror browserfs.min.js
 
 $(CODEMIRROR).zip:
 	wget https://codemirror.net/$(CODEMIRROR).zip
+
+browserfs.min.js:
+	wget https://cdnjs.cloudflare.com/ajax/libs/BrowserFS/$(BROWSERFS)/browserfs.min.js
 
 codemirror: $(CODEMIRROR).zip
 	shasum -a 256 -c checksum
