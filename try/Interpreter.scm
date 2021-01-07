@@ -96,15 +96,6 @@ Interpreter.prototype.console_interrupted = function (cons) {
 
 g_interp = new Interpreter();
 
-BrowserFS.configure({
-  fs: "InMemory"
-}, function(e) {
-  if (e) {
-    throw e;
-  }
-  window.g_os_fs = BrowserFS.BFSRequire('fs');
-});
-
 EOF
 ))
 
