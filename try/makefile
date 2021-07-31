@@ -59,6 +59,6 @@ manifest: codemirror lib manifest.sh
 	./manifest.sh >manifest
 
 upload: manifest
-	rsync -vrx --files-from manifest ./ alpha.servers.scheme.org:/production/try/www/
+	rsync -crv --files-from manifest ./ alpha.servers.scheme.org:/production/try/www/
 
 .PHONY: all clean upload
