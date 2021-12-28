@@ -9,190 +9,129 @@
 (##include "~~lib/_gambit#.scm")
 
 (declare (extended-bindings) (standard-bindings) (block))
+(declare (not inline))
+
+;;;----------------------------------------------------------------------------
 
 (##inline-host-declaration #<<EOF
 
-function G_VM() {
+function VM() {
 
   var vm = this;
 
+  // Determine if code is running in a web browser (alternative is nodejs).
+
+  vm.os_web = (function () { return this === this.window; })();
+  vm.os_web_origin = '';
   vm.ui = null;
-  vm.heartbeat_interval = 10000;
-  vm.heartbeat_count = vm.heartbeat_interval;
 
-  // Redefine ##check-heap-limit so that it checks interrupts (to allow
-  // preemptive thread scheduling and user interrupts in interpreted code).
+  if (vm.os_web) {
 
-  g_check_heap_limit0 = function () {
-    if (--vm.heartbeat_count === 0) {
-      vm.heartbeat_count = vm.heartbeat_interval;
-      setTimeout(function () {
-        g_call_start(g_glo['##heartbeat!'], [], g_r0);
-      }, 10);
-      return null; // exit trampoline
-    } else {
-      g_r1 = void 0;
-      return g_r0;
-    }
-  };
+    // The @all_modules_registered@ function is called when all
+    // the JavaScript code of the program's Scheme modules are
+    // registered.  It is predefined by the runtime system to
+    // call @program_start@ to start the execution of the Scheme
+    // code.  However this may be too early for the web application,
+    // in particular the DOM elements for the UI may not exist yet.
+    // To work around this issue the @all_modules_registered@ function
+    // is redefined to do nothing and the start of the execution of the
+    // Scheme code will require an explicit call to the VM's init method.
 
-  // Set things up to defer execution of Scheme code until
-  // vm.init is called.
-
-  g_module_table.push(null); // pretend an extra module is needed
+    @all_modules_registered@ = function () { };
+  }
 };
 
-G_VM.prototype.init = function (ui_elem) {
+VM.prototype.init = function (ui_elem) {
 
   var vm = this;
 
-  vm.ui = new G_UI(vm, ui_elem);
+  // The init method is only called when running in a web browser, i.e.
+  // vm.os_web is true.  It is typically called when the web page is
+  // fully loaded. For example:
+  //
+  //    <body onload="main_vm.init('#ui');">
+  //    <div id="ui"></div>
 
-  // Start execution of Scheme code.
+  vm.os_web_origin = @os_web_origin@;
+  vm.ui = new UI(vm, ui_elem);
 
-  g_module_table.pop(); // remove extra module
-  g_program_start();
-}
+  @program_start@(); // Start execution of Scheme code.
+};
 
-g_vm = new G_VM();
+VM.prototype.os_condvar_ready_set = function (condvar_scm, ready) {
+
+  var vm = this;
+
+  @os_condvar_ready_set@(condvar_scm, ready);
+};
+
+VM.prototype.new_repl = function (ui) {
+
+  var vm = this;
+
+  @async_call@(false, // no result needed
+               false,
+               @glo@['##new-repl'],
+               ui ? [@host2foreign@(ui)] : []);
+};
+
+VM.prototype.user_interrupt_thread = function (thread_scm) {
+
+  var vm = this;
+
+  @heartbeat_count@ = 1; // force interrupt at next poll point
+
+  @async_call@(false, // no result needed
+               thread_scm,
+               @glo@['##user-interrupt!'],
+               []);
+};
+
+VM.prototype.terminate_thread = function (thread_scm) {
+
+  var vm = this;
+
+  @async_call@(false, // no result needed
+               false,
+               @glo@['##thread-terminate!'],
+               [thread_scm]);
+};
+
+main_vm = new VM();
 
 EOF
 )
 
-;; Convenience Scheme procedure to pass Scheme objects to JavaScript
-;; without an automatic conversion.
-
-(define (scheme scmobj)
-  (##inline-host-expression
-   "g_scm2scheme(@1@)"
-   scmobj))
-
-;; The "main-event-loop" thread takes care of processing events that
-;; come from the JavaScript runtime system.
-
-(define (##start-main-event-loop)
-
-  (define (exec event)
-    (let* ((nargs (##fx- (##vector-length event) 3))
-           (proc (##vector-ref event 2)))
-      (cond ((##fx= nargs 0)
-             (proc))
-            ((##fx= nargs 1)
-             (proc (##vector-ref event 3)))
-            ((##fx= nargs 2)
-             (proc (##vector-ref event 3)
-                   (##vector-ref event 4)))
-            ((##fx= nargs 3)
-             (proc (##vector-ref event 3)
-                   (##vector-ref event 4)
-                   (##vector-ref event 5)))
-            (else
-             (let loop ((i (##fx- (##vector-length event) 1))
-                        (args '()))
-               (if (##fx>= i 3)
-                   (loop (##fx- i 1)
-                         (##cons (##vector-ref event i) args))
-                   (##apply proc args)))))))
-
-  (define (handle event)
-    (if (##vector-ref event 1) ;; response required?
-        (##with-exception-catcher
-         (lambda (exc)
-           ;; send exception back to JavaScript
-           ((##vector-ref event 1)
-            (##call-with-output-string
-             (lambda (port)
-               (##display-exception exc port)))
-            (##void)))
-         (lambda ()
-           ;; send result back to JavaScript
-           ((##vector-ref event 1)
-            (macro-absent-obj) ;; signal completion with no error
-            (exec event))))
-        (exec event)))
-
-  (let* ((selector #f)
-         (rdevice (##os-device-event-queue-open selector))
-         (main-event-queue (##make-event-queue-port rdevice selector)))
-
-    (let* ((tgroup
-            (##make-tgroup 'main-event-loop #f))
-           (input-port
-            ##stdin-port)
-           (output-port
-            ##stdout-port)
-           (main-event-loop-thread
-            (##make-root-thread
-             (lambda ()
-               (let loop ()
-                 (let* ((event (##read main-event-queue))
-                        (thread ;; handle event in which thread?
-                         (or (##vector-ref event 0)
-                             (macro-current-thread))))
-                   (cond ((##eq? thread (macro-current-thread))
-                          ;; handle event synchronously in main-event-loop
-                          (handle event))
-                         ((##eq? thread #t)
-                          ;; handle event asynchronously by creating
-                          ;; a new thread just for this event
-                          (##thread-start!
-                           (##make-thread
-                            (lambda ()
-                              (handle event)))))
-                         (else
-                          ;; handle event asynchronously by interrupting
-                          ;; an existing thread
-                          (##thread-int! thread
-                                         (lambda ()
-                                           (handle event)
-                                           (##void)))))
-                   (loop))))
-             'main-event-loop
-             tgroup
-             input-port
-             output-port)))
-      (##thread-start! main-event-loop-thread))))
-
-(##start-main-event-loop)
-
-(define (##heartbeat!)
-  (##declare (not interrupts-enabled))
-  (##inline-host-statement "console.log('##heartbeat!');")
-  (##thread-check-devices! #f)
-  (##thread-heartbeat!))
-
-(##hidden-continuation-parent?-set!
- (lambda (parent)
-   (or (##eq? parent ##thread-check-devices!)
-       (##eq? parent ##heartbeat!)
-       (##eq? parent ##start-main-event-loop)
-       (##default-hidden-continuation-parent? parent))))
+;;;----------------------------------------------------------------------------
 
 ;; Define "console" ports that support multiple independent REPLs.
 
-(define (##os-device-stream-open-console title flags thread)
+(define (##os-device-stream-open-console title flags ui thread)
   (##inline-host-declaration "
 
-g_os_device_stream_open_console = function (vm, title_scm, flags_scm, thread_scm) {
+@os_device_stream_open_console@ = function (vm, title_scm, flags_scm, ui_scm, thread_scm) {
 
-  var title = g_scm2host(title_scm);
-  var flags = g_scm2host(flags_scm);
+  var title = @scm2host@(title_scm);
+  var flags = @scm2host@(flags_scm);
+  var ui = @scm2host@(ui_scm);
 
-  var dev = new G_Device_console(vm, title, flags, thread_scm);
+  var dev = new Device_console(vm, title, flags, ui, thread_scm);
 
-  return g_host2foreign(dev);
+  return @host2foreign@(dev);
 };
 
 ")
   (##inline-host-expression
-   "g_os_device_stream_open_console(g_vm,@1@,@2@,@3@)"
+   "@os_device_stream_open_console@(main_vm,@1@,@2@,@3@,@4@)"
    title
    flags
+   ui
    thread))
 
 (define (##open-console title
                         name
                         #!optional
+                        (ui #f)
                         (thread #f)
                         (settings (macro-absent-obj)))
   (let ((direction
@@ -211,6 +150,7 @@ g_os_device_stream_open_console = function (vm, title_scm, flags_scm, thread_scm
               (##os-device-stream-open-console
                title
                (##psettings->device-flags psettings)
+               ui
                thread)))
          (if (##fixnum? device)
              (##exit-with-err-code device)
@@ -220,25 +160,42 @@ g_os_device_stream_open_console = function (vm, title_scm, flags_scm, thread_scm
                    device
                    psettings))))))))
 
-(define (##thread-make-repl-channel-as-console thread)
+(define (##activate-console dev)
+  (##inline-host-statement
+   "@foreign2host@(@1@).activate();"
+   dev))
+
+(define (##activate-repl)
+  (let* ((console (##repl-output-port))
+         (condvar (macro-device-port-wdevice-condvar console))
+         (dev (macro-condvar-name condvar)))
+    (##activate-console dev)))
+
+(define ##current-ui (##make-parameter #f))
+
+(define (##thread-make-repl-channel-as-console thread #!optional (ui #f))
   (let* ((sn (##object->serial-number thread))
          (title (##object->string thread))
          (name (if (##eqv? sn 1)
                    'console
                    (##string->symbol
                     (##string-append "console" (##number->string sn 10)))))
-         (port (##open-console title name thread)))
+         (port (##open-console title name (or ui (##current-ui)) thread)))
     (##make-repl-channel-ports port port port)))
 
-(##thread-make-repl-channel-set! ##thread-make-repl-channel-as-console)
+;; Enable web console.
 
-;; Redefine the documentation browser to open the manual.
+(if (##inline-host-expression "@host2scm@(main_vm.ui !== null)")
+    (begin
 
-(##gambdoc-set!
- (lambda (arg1 arg2 arg3 arg4)
-   (##inline-host-statement
-    "window.open(g_scm2host(@1@));"
-    (##string-append "doc/gambit.html#" arg4))))
+      (##thread-make-repl-channel-set! ##thread-make-repl-channel-as-console)
+
+      ;; Prevent exiting the REPL with EOF.
+      (macro-repl-channel-really-exit?-set!
+       (##thread-repl-channel-get! (macro-current-thread))
+       (lambda (channel) #f))))
+
+;;;----------------------------------------------------------------------------
 
 ;; Redirect current input/output ports to the console to avoid surprises
 ;; (by default the current output port is the JS console).
@@ -246,23 +203,12 @@ g_os_device_stream_open_console = function (vm, title_scm, flags_scm, thread_scm
 (##current-input-port (##repl-input-port))
 (##current-output-port (##repl-output-port))
 
-;; Prevent exiting the REPL with EOF.
-
-(macro-repl-channel-really-exit?-set!
- (##thread-repl-channel-get! (macro-current-thread))
- (lambda (channel) #f))
-
 (define (##repl-no-banner)
   (##repl-debug
    (lambda (first port) #f)
    #t))
 
-(define (##activate-console dev)
-  (##inline-host-statement
-   "g_vm.ui.activate_console(g_foreign2host(@1@));"
-   dev))
-
-(define (##new-repl)
+(define (##new-repl #!optional (ui #f))
   (declare (not interrupts-enabled))
   (##thread-start!
    (let* ((primordial-tgroup
@@ -271,32 +217,58 @@ g_os_device_stream_open_console = function (vm, title_scm, flags_scm, thread_scm
            ##stdin-port)
           (output-port
            ##stdout-port)
+          (ui
+           (or ui (##current-ui)))
           (thread
            (##make-root-thread
             (lambda ()
-              ;; thread will start a REPL
-              (let* ((console (##repl-output-port))
-                     (condvar (macro-device-port-wdevice-condvar console))
-                     (dev (macro-condvar-name condvar)))
-                (##activate-console dev))
-              (##repl-no-banner))
+              (##parameterize ((##current-ui ui))
+                (let ((input-port (##repl-input-port))
+                      (output-port (##repl-output-port)))
+                  (##parameterize ((##current-input-port input-port)
+                                   (##current-output-port output-port))
+                    ;; bring REPL tab to frontmost
+                    (##activate-repl)
+                    ;; start REPL
+                    (##repl-no-banner)))))
             (##void) ;; no name
             primordial-tgroup
             input-port
             output-port)))
      thread)))
 
-(define (##primordial-repl)
+;; Import the six.infix special form for JavaScript without an actual
+;; import statement that would require reading files.
 
-  (##current-input-port (##repl-input-port))
-  (##current-output-port (##repl-output-port))
-  (##current-error-port (##repl-output-port))
+(##eval
+ '(##begin
+   (##namespace ("_six/js#" six.infix))
+   (##define-syntax six.infix
+     (lambda (src)
+       (##demand-module _six/six-expand)
+       (_six/six-expand#six.infix-js-expand src)))))
 
-  (##repl-debug
-   (lambda (first port)
-     #f)
-   #t))
+;; Redefine the documentation browser to open the manual.
 
-(##primordial-repl)
+(##gambdoc-set!
+ (lambda (arg1 arg2 arg3 arg4)
+   (##inline-host-statement
+    "window.open(@scm2host@(@1@));"
+    (##string-append "doc/gambit.html#" arg4))))
+
+;; When running in web browser set current directory to / and
+;; add that directory to module search order.
+
+(if (##inline-host-expression "@host2scm@(main_vm.os_web)")
+    (begin
+      (##current-directory "/")
+      (##module-search-order-set! (cons "/" ##module-search-order))))
+
+;; Start the REPL of the primordial thread.
+
+(if (##inline-host-expression
+     "@host2scm@(main_vm.os_web_origin.indexOf('://try.scheme.org/') > 0)")
+    (##repl-no-banner)
+    (##repl-debug-main))
 
 ;;;============================================================================

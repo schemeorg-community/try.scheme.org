@@ -8,46 +8,17 @@
     <script src="codemirror/lib/codemirror.js"></script>
     <script src="codemirror/mode/scheme/scheme.js"></script>
     <script src="codemirror/addon/edit/matchbrackets.js"></script>
-    <link rel="stylesheet" href="console.css">
-    <script src="Console.js"></script>
-    <script src="Interpreter.min.js"></script>
-    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
-    <link rel="manifest" href="/favicon/site.webmanifest" />
-    <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#5bbad5" />
-    <link rel="shortcut icon" href="/favicon/favicon.ico" />
-    <meta name="msapplication-TileColor" content="#ffc40d" />
-    <meta name="msapplication-config" content="/favicon/browserconfig.xml" />
-    <meta name="theme-color" content="#ffffff" />
+    <script src="codemirror/keymap/emacs.js"></script>
+    <link rel="stylesheet" href="UI.css">
+    <script src="UI.js"></script>
+    <script src="VM.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   </head>
-  <body onload="new Console(document.querySelector('#console')).connect(g_interp);">
 
-    <pre>
-    Keybindings of the console:
-      Enter          send the current line to the interpreter
-      Up / Ctrl-P    move back in history
-      Down / Ctrl-N  move forward in history
-      Ctrl-L         clear transcript
-      Ctrl-D         end-of-file when line is empty
-      Ctrl-C         interrupt execution
+  <body onload="main_vm.init('#ui');">
 
-    A few things to try out:
-      &gt; (define (f x) (if (&lt; x 2) x (+ (f (- x 1)) (f (- x 2)))))
-      &gt; (time (f 25))
-      &gt; (time (fib 25)) ;; fib is compiled in Interpreter.scm
-      &gt; (define (go n) (thread-start! (make-thread (lambda () (pp (f n))))))
-      &gt; (for-each go '(25 25 15 25 10))
-      &gt; (import (srfi 28))
-      &gt; (format "1+2=~a" (+ 1 2))
-      &gt; (host-exec "alert(g_scm2host(@1@))" "hello!")
-      &gt; ,help
-    </pre>
-
-    <br>
-
-    <div id="console"></div>
+    <div id="ui"></div>
 
   </body>
 </html>

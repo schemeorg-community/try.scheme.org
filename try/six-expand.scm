@@ -1,10 +1,25 @@
 ;;;============================================================================
 
-;;; File: "six-convert.scm"
+;;; File: "six-expand.scm"
 
 ;;; Copyright (c) 2020-2021 by Marc Feeley, All Rights Reserved.
 
 ;;;============================================================================
+
+(##supply-module _six/six-expand)
+
+(##namespace ("_six/six-expand#"))        ;; in _six/six-expand#
+(##include "~~lib/gambit/prim/prim#.scm") ;; map fx+ to ##fx+, etc
+(##include "~~lib/_gambit#.scm")          ;; for macro-check-procedure,
+                                          ;; macro-absent-obj, etc
+
+(##include "six-expand#.scm")
+
+(declare (extended-bindings)) ;; ##fx+ is bound to fixnum addition, etc
+(declare (not safe))          ;; claim code has no type errors
+(declare (block))             ;; claim no global is assigned
+
+;;;----------------------------------------------------------------------------
 
 (define-type conversion-ctx
   operators
@@ -104,13 +119,15 @@
      (six.literal    0 0)
      (six.list       0 0)
      (six.null       0 0)
+     (six.asyncx     0 1 1 "async ") ;; note: RL associative
 
      (six.index      1 0)
      (six.call       1 0)
      (six.dot        1 0)
+     (six.new        1 0)
 
-;;     (six.x++        3 0 -1 "++")
-;;     (six.x--        3 0 -1 "--")
+     (six.x++        3 0 -1 "++")
+     (six.x--        3 0 -1 "--")
 
      (six.+x         4 1 1 "+") ;; note: RL associative
      (six.-x         4 1 1 "-")
@@ -118,6 +135,8 @@
      (six.~x         4 1 1 "~")
      (six.++x        4 1 1 "++")
      (six.--x        4 1 1 "--")
+     (six.awaitx     4 1 1 "await ")
+     (six.typeofx    4 1 1 "typeof ")
 
      (six.x**y       5 1 2 "**") ;; note: RL associative
 
@@ -137,6 +156,7 @@
      (six.x>y        9 0 2 ">")
      (six.x>=y       9 0 2 ">=")
      (six.xiny       9 0 2 " in ")
+     (six.xinstanceofy 9 0 2 " instanceof ")
 
      (six.x==y      10 0 2 "==")
      (six.x!=y      10 0 2 "!=")
@@ -171,7 +191,9 @@
      (six.x&&=y     18 1 2 "&&=")
      (six.x||=y     18 1 2 "||=")
 
-;;     (six.x,=y      20 0 2 ",")
+     (six.yieldx    20 1 1 "yield ") ;; note: RL associative
+
+;;     (six.x,=y      21 0 2 ",")
 
      (six.procedure 99 0)
 )))
@@ -334,6 +356,42 @@
   (let ((target-expr (six-expression-to-infix cctx ast-src)))
     (cons (flatten-string target-expr)
           (reverse (conversion-ctx-parameters cctx)))))
+
+;; Expand six.infix for JavaScript.
+
+(define (six.infix-js-expand src)
+  (##deconstruct-call
+   src
+   2
+   (lambda (ast-src)
+     (let ((ast (##source-strip ast-src)))
+       (if (and (pair? ast)
+                (eq? 'six.import (##source-strip (car ast)))
+                (pair? (cdr ast))
+                (null? (cddr ast)))
+           (let ((ident (##source-strip (cadr ast))))
+             (if (and (pair? ident)
+                      (eq? 'six.identifier (##source-strip (car ident)))
+                      (pair? (cdr ident))
+                      (null? (cddr ident)))
+                 `(begin
+                    (error "JavaScript import not implemented")
+                    (js-import ,(symbol->string (##source-strip (cadr ident))))
+                    (void))
+                 (error "invalid import")))
+
+           (let* ((x (six->js ast-src))
+                  (body (car x))
+                  (params (cdr x))
+                  (def
+                   (string-append "(async function ("
+                                  (flatten-string
+                                   (comma-separated (map car params)))
+                                  ") {"
+                                  "\n return " 
+                                  body ";\n})")))
+             `((##host-function-memoized ',(box def)) ;; literal box
+               ,@(map cdr params))))))))
 
 (define (six->python ast-src)
 
@@ -513,6 +571,18 @@
                     (comma-separated args)
                     ")")))))
 
+        ((six.new)
+         (##deconstruct-call
+          ast-src
+          -2
+          (lambda (constructor-src . args-src)
+            (let ((args (map cvt args-src)))
+              (list "new "
+                    (infix constructor-src 0 inner-op)
+                    "("
+                    (comma-separated args)
+                    ")")))))
+
         ((six.dot)
          (##deconstruct-call
           ast-src
@@ -562,3 +632,5 @@
 
 (define (flatten-string x)
   (call-with-output-string (lambda (p) (##print-aux x p))))
+
+;;;============================================================================
